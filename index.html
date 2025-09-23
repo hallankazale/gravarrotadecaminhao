@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Rastreador de Rotas (Caminhão) — Mobile</title>
+  <meta name="theme-color" content="#22c55e">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <style>
+    :root{ --bg:#0f172a; --fg:#e5e7eb; --muted:#94a3b8; --acc:#22c55e; --warn:#f59e0b; --err:#ef4444; --card:#111827 }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif}
+    .wrap{display:flex;flex-direction:column;height:100%;gap:.75rem;padding:.75rem}
+    header{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+    h1{font-size:1.05rem;margin:0}
+    .chip{font-size:.75rem;padding:.25rem .5rem;border-radius:999px;background:#334155}
+    .cards{display:grid;grid-template-columns:1fr;gap:.75rem}
+    @media (min-width:700px){.cards{grid-template-columns:1fr 1fr}}
+    .card{background:var(--card);border:1px solid #1f2937;border-radius:14px;box-shadow:0 8px 24px rgb(0 0 0 / .25);overflow:hidden}
+    .card>.head{display:flex;align-items:center;justify-content:space-between;padding:.75rem .9rem;border-bottom:1px solid #1f2937}
+    .head h2{font-size:.95rem;margin:0;color:#cbd5e1}
+    .head small{color:var(--muted)}
+    .body{padding:.75rem .9rem}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+    .metric{background:#0b1220;border:1px solid #1f2937;border-radius:10px;padding:.6rem}
+    .metric .label{font-size:.75rem;color:var(--muted)}
+    .metric .value{font-size:1.1rem;margin-top:.15rem}
+    .controls{display:flex;flex-wrap:wrap;gap:.5rem}
+    button{appearance:none;border:0;border-radius:12px;padding:.7rem .9rem;font-weight:600}
+    .primary{background:var(--acc);color:#052e16}
+    .secondary{background:#1f2937;color:#e5e7eb}
+    .danger{background:var(--err);color:#fff}
+    .warning{background:var(--warn);color:#111}
+    .ghost{background:transparent;border:1px dashed #334155;color:#cbd5e1}
+    button:disabled{opacity:.6}
+    #map{height:55vh;width:100%}
+    .log{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8rem;max-height:22vh;overflow:auto;background:#0b1220;border:1px solid #1f2937;border-radius:10px;padding:.6rem}
+    .tag{display:inline-block;background:#0b1220;border:1px solid #1f2937;padding:.15rem .45rem;border-radius:8px;margin-right:.25rem}
+    input,select{background:#0b1220;color:#e5e7eb;border:1px solid #1f2937;border-radius:10px;padding:.6rem;width:100%}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>📍 Rastreador de Rotas do Caminhão</h1>
+      <span id="statusChip" class="chip">Parado</span>
+    </header>
+
+    <section class="cards">
+      <div class="card">
+        <div class="head"><h2>Mapa & Trajeto</h2><small id="gpsQuality">—</small></div>
+        <div class="body"><div id="map"></div></div>
+      </div>
+      <div class="card">
+        <div class="head"><h2>Sessão atual</h2><small id="startTimeLabel">—</small></div>
+        <div class="body">
+          <div class="two-col">
+            <div class="metric"><div class="label">Tempo</div><div id="mDuration" class="value">00:00:00</div></div>
+            <div class="metric"><div class="label">Distância</div><div id="mDistance" class="value">0,00 km</div></div>
+            <div class="metric"><div class="label">Velocidade média</div><div id="mAvgSpeed" class="value">0.0 km/h</div></div>
+            <div class="metric"><div class="label">Pontos</div><div id="mPoints" class="value">0</div></div>
+          </div>
+          <div style="height:.6rem"></div>
+          <div class="controls">
+            <button id="btnStart" class="primary">▶️ Iniciar</button>
+            <button id="btnPause" class="warning" disabled>⏸️ Pausar</button>
+            <button id="btnResume" class="secondary" disabled>▶️ Retomar</button>
+            <button id="btnStop" class="danger" disabled>⏹️ Finalizar & Salvar</button>
+            <button id="btnMark" class="ghost" disabled>📍 Marcar ponto</button>
+          </div>
+          <div style="height:.6rem"></div>
+          <label>Nome da rota (opcional)</label>
+          <input id="routeName" placeholder="Ex.: Entrega 24/09 – Araquari → Joinville" />
+          <div style="height:.6rem"></div>
+          <h3 style="margin:.2rem 0;font-size:.9rem;color:#cbd5e1">Parâmetros do caminhão (salvos no aparelho)</h3>
+          <div class="two-col">
+            <input id="truckHeight" placeholder="Altura (m) ex.: 3.8"/>
+            <input id="truckWeight" placeholder="Peso total (t) ex.: 23"/>
+            <input id="truckAxles" placeholder="Eixos ex.: 3"/>
+            <select id="truckHazmat"><option value="nao">Sem HAZMAT</option><option value="sim">Com HAZMAT</option></select>
+          </div>
+          <small class="tag">Dados guardados localmente (localStorage).</small>
+        </div>
+      </div>
+    </section>
+
+    <div class="card">
+      <div class="head"><h2>Histórico salvo no aparelho</h2><small><span class="tag">localStorage</span></small></div>
+      <div class="body">
+        <div class="controls" style="margin-bottom:.5rem">
+          <button class="ghost" id="btnExportAll">📦 Exportar tudo (.zip)</button>
+          <button class="ghost" id="btnWipe">🧹 Limpar tudo</button>
+        </div>
+        <div id="history"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="head"><h2>Console</h2><small>erros e eventos</small></div>
+      <div class="body"><div id="log" class="log"></div></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    // ===== SW registration (GitHub Pages: relative path) =====
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then(
+          () => console.log('SW registrado'),
+          (e) => console.warn('SW falhou', e)
+        );
+      });
+    }
+
+    // ===== HTTPS / localhost aviso =====
+    (function(){
+      const ok = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      if(!ok){
+        alert('Para o GPS funcionar no celular, publique em HTTPS (GitHub Pages já é https).');
+      }
+    })();
+
+    // ===== Polyfill crypto.randomUUID() =====
+    if (!('crypto' in window) || !crypto.randomUUID) {
+      window.crypto = window.crypto || {};
+      crypto.randomUUID = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random()*16|0, v = c==='x' ? r : (r&0x3|0x8);
+        return v.toString(16);
+      });
+    }
+
+    // ===== Util =====
+    const $ = (sel)=>document.querySelector(sel);
+    const log = (msg)=>{ const el=$('#log'); const t=new Date().toLocaleTimeString(); el.innerText = `[${t}] ${msg}\n` + el.innerText; };
+    const fmtKm = m => (m/1000).toFixed(2).replace('.',',') + ' km';
+    const fmtHms = (sec)=> new Date(sec*1000).toISOString().substring(11,19);
+
+    function haversine(a,b){
+      const toRad=d=>d*Math.PI/180, R=6371e3;
+      const dLat=toRad(b.lat-a.lat), dLon=toRad(b.lng-a.lng);
+      const s1=toRad(a.lat), s2=toRad(b.lat);
+      const aa=Math.sin(dLat/2)**2 + Math.cos(s1)*Math.cos(s2)*Math.sin(dLon/2)**2;
+      return 2*R*Math.asin(Math.sqrt(aa));
+    }
+
+    // ===== Estado =====
+    let watchId=null, tracking=false, paused=false;
+    let points=[], startedAt=null, pausedAt=null, pausedAccum=0;
+
+    // ===== Mapa =====
+    const map=L.map('map',{zoomControl:false});
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
+    map.setView([-26.37, -48.74], 11);
+    const path=L.polyline([], {color:'#22c55e', weight:5, opacity:.9}).addTo(map);
+    const startMarker=L.circleMarker([0,0],{radius:6,color:'#22c55e',fill:true,fillOpacity:1});
+    const liveMarker=L.circleMarker([0,0],{radius:6,color:'#38bdf8',fill:true,fillOpacity:1});
+
+    // ===== UI =====
+    const btnStart=$('#btnStart'), btnPause=$('#btnPause'), btnResume=$('#btnResume'), btnStop=$('#btnStop'), btnMark=$('#btnMark');
+    const chip=$('#statusChip');
+
+    function start(){
+      if(!('geolocation' in navigator)){ alert('Geolocalização não disponível.'); return; }
+      points=[]; startedAt=Date.now(); pausedAccum=0; paused=false; tracking=true;
+      chip.textContent='Gravando'; chip.style.background='#22c55e';
+      $('#startTimeLabel').textContent=new Date(startedAt).toLocaleString();
+      btnStart.disabled=true; btnPause.disabled=false; btnStop.disabled=false; btnMark.disabled=false; btnResume.disabled=true;
+      path.setLatLngs([]);
+      try{ startMarker.remove(); liveMarker.remove(); }catch(e){/* ignore */}
+      watchId=navigator.geolocation.watchPosition(onPos,onErr,{ enableHighAccuracy:true, maximumAge:2000, timeout:20000 });
+      log('▶️ Iniciado (aguardando GPS...)');
+    }
+
+    function pause(){ if(!tracking||paused) return; paused=true; pausedAt=Date.now(); btnPause.disabled=true; btnResume.disabled=false; chip.textContent='Pausado'; chip.style.background='#f59e0b'; log('⏸️ Pausado'); }
+    function resume(){ if(!tracking||!paused) return; paused=false; pausedAccum += Date.now()-pausedAt; pausedAt=null; btnPause.disabled=false; btnResume.disabled=true; chip.textContent='Gravando'; chip.style.background='#22c55e'; log('▶️ Retomado'); }
+
+    function stop(){
+      if(watchId!=null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
+      tracking=false; paused=false;
+      btnStart.disabled=false; btnPause.disabled=true; btnResume.disabled=true; btnStop.disabled=true; btnMark.disabled=true;
+      chip.textContent='Parado'; chip.style.background='#334155';
+      const data=buildSummary();
+      if(points.length>0){
+        const name=$('#routeName').value.trim()||`Rota ${new Date(startedAt).toLocaleString()}`;
+        const params=loadTruckParams();
+        const rec={id:crypto.randomUUID(), name, startedAt, duration:data.durationSec, distance:data.distanceM, points, params, createdAt:Date.now()};
+        const all=loadAll(); all.unshift(rec); saveAll(all); renderHistory();
+        log(`💾 Rota salva: "${name}" com ${points.length} pontos e ${fmtKm(data.distanceM)}`);
+      } else { log('ℹ️ Nenhum ponto coletado.'); }
+    }
+
+    function askTag(){
+      const opts=['Parada','Pedágio','Posto','Perigoso','Restrição','Outro'];
+      const pick=prompt('Tipo do ponto?\n'+opts.map((o,i)=>`${i+1}. ${o}`).join('\n'));
+      const idx=Number(pick)-1; return opts[idx]||'Marcado';
+    }
+
+    function mark(){ if(points.length){ const last=points[points.length-1]; const tag=askTag(); last.tag=tag; L.circleMarker([last.lat,last.lng],{radius:5,color:'#eab308',fill:true,fillOpacity:1}).addTo(map).bindTooltip(tag); log('📍 Ponto manual: '+tag); } }
+
+    function onPos(pos){
+      const {latitude:lat, longitude:lng, accuracy, speed, heading}=pos.coords; const ts=pos.timestamp;
+      $('#gpsQuality').textContent=`±${Math.round(accuracy)} m`;
+      if(!tracking||paused) return;
+      const p={lat,lng, ts, spd:speed??null, acc:accuracy, hdg:heading??null};
+      points.push(p);
+      liveMarker.setLatLng([lat,lng]).addTo(map);
+      if(points.length===1){ startMarker.setLatLng([lat,lng]).addTo(map); map.setView([lat,lng], 16);} else { path.addLatLng([lat,lng]); map.panTo([lat,lng]); }
+      updateMetrics();
+    }
+
+    function onErr(err){ log(`❌ GPS: ${err.code} - ${err.message}`); }
+
+    function buildSummary(){
+      let dist=0; for(let i=1;i<points.length;i++){ dist+=haversine(points[i-1],points[i]); }
+      const now=Date.now();
+      const durationSec=Math.max(0, Math.round(((paused?pausedAt:now)-startedAt-pausedAccum)/1000));
+      const avgSpeed = durationSec>0? (dist/1000)/(durationSec/3600):0;
+      return {distanceM:dist, durationSec, avgSpeed};
+    }
+
+    function updateMetrics(){ const s=buildSummary(); $('#mDistance').textContent=fmtKm(s.distanceM); $('#mDuration').textContent=fmtHms(s.durationSec); $('#mAvgSpeed').textContent=`${s.avgSpeed.toFixed(1)} km/h`; $('#mPoints').textContent=String(points.length); }
+
+    // ===== Persistência =====
+    const KEY='truck.tracks.v1';
+    const KEY_TRUCK='truck.params.v1';
+    const loadAll=()=>JSON.parse(localStorage.getItem(KEY)||'[]');
+    const saveAll=(arr)=>localStorage.setItem(KEY, JSON.stringify(arr));
+    function loadTruckParams(){ return JSON.parse(localStorage.getItem(KEY_TRUCK)||'{}'); }
+    function saveTruckParams(obj){ localStorage.setItem(KEY_TRUCK, JSON.stringify(obj)); }
+
+    function renderHistory(){
+      const cont=$('#history'); cont.innerHTML='';
+      const data=loadAll();
+      if(!data.length){ cont.innerHTML='<p style="color:var(--muted)">Nada salvo ainda.</p>'; return; }
+      for(const rec of data){
+        const div=document.createElement('div');
+        div.style.cssText='border:1px solid #1f2937;border-radius:10px;padding:.6rem;margin:.4rem 0;background:#0b1220';
+        const started=new Date(rec.startedAt).toLocaleString();
+        const dist=fmtKm(rec.distanceM);
+        const dur=fmtHms(rec.durationSec);
+        const paramsStr = rec.params? ` • Truck: ${rec.params.axles||'?'} eixos, ${rec.params.weight||'?'} t, ${rec.params.height||'?'} m` : '';
+        div.innerHTML = `
+          <div style="display:flex;justify-content:space-between;gap:.5rem;align-items:center;flex-wrap:wrap">
+            <div>
+              <div style="font-weight:700">${rec.name}</div>
+              <div style="font-size:.8rem;color:var(--muted)">Início: ${started} • Duração: ${dur} • Distância: ${dist} • Pontos: ${rec.points.length}${paramsStr}</div>
+            </div>
+            <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+              <button class="secondary" onclick='preview("${rec.id}")'>👁️ Visualizar</button>
+              <button class="ghost" onclick='downloadGeoJSON("${rec.id}")'>⬇️ GeoJSON</button>
+              <button class="ghost" onclick='downloadGPX("${rec.id}")'>⬇️ GPX</button>
+              <button class="ghost" onclick='downloadCSV("${rec.id}")'>⬇️ CSV</button>
+              <button class="danger" onclick='del("${rec.id}")'>🗑️ Apagar</button>
+            </div>
+          </div>`;
+        cont.appendChild(div);
+      }
+    }
+
+    function getById(id){ return loadAll().find(x=>x.id===id); }
+    function del(id){ const all=loadAll().filter(x=>x.id!==id); saveAll(all); renderHistory(); log('🗑️ Rota removida'); }
+
+    function download(filename, text, mime='text/plain'){
+      const a=document.createElement('a'); a.href=`data:${mime};charset=utf-8,`+encodeURIComponent(text); a.download=filename; a.click();
+    }
+    window.downloadGeoJSON=(id)=>{ const rec=getById(id); if(!rec) return; const geo={ type:'FeatureCollection', features:[{ type:'Feature', properties:{name:rec.name, startedAt:rec.startedAt, params:rec.params||null}, geometry:{ type:'LineString', coordinates: rec.points.map(p=>[p.lng,p.lat]) } }] }; download(`${rec.name.replace(/\s+/g,'_')}.geojson`, JSON.stringify(geo), 'application/geo+json'); }
+    window.downloadGPX=(id)=>{ const rec=getById(id); if(!rec) return; const wpt = rec.points.map(p=>`<trkpt lat="${p.lat}" lon="${p.lng}"><time>${new Date(p.ts).toISOString()}</time>${p.spd?`<extensions><speed>${p.spd}</speed></extensions>`:''}</trkpt>`).join('\n'); const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rastreador" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>${rec.name}</name><trkseg>\n${wpt}\n</trkseg></trk>\n</gpx>`; download(`${rec.name.replace(/\s+/g,'_')}.gpx`, gpx, 'application/gpx+xml'); }
+    window.downloadCSV=(id)=>{ const rec=getById(id); if(!rec) return; const head='ts,lat,lng,speed,accuracy,heading,tag\n'; const rows=rec.points.map(p=>[p.ts,p.lat,p.lng,p.spd??'',p.acc??'',p.hdg??'',p.tag??''].join(',')); download(`${rec.name.replace(/\s+/g,'_')}.csv`, head+rows.join('\n'), 'text/csv'); }
+
+    async function exportAllZip(){
+      const zip = new JSZip(); const all = loadAll(); if(!all.length){ alert('Nada para exportar.'); return; }
+      for(const rec of all){
+        const base = rec.name.replace(/\s+/g,'_');
+        const geo={ type:'FeatureCollection', features:[{ type:'Feature', properties:{name:rec.name, startedAt:rec.startedAt, params:rec.params||null}, geometry:{ type:'LineString', coordinates: rec.points.map(p=>[p.lng,p.lat]) } }] };
+        zip.file(`${base}.geojson`, JSON.stringify(geo));
+        const wpt = rec.points.map(p=>`<trkpt lat="${p.lat}" lon="${p.lng}"><time>${new Date(p.ts).toISOString()}</time></trkpt>`).join('\n');
+        const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rastreador" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>${rec.name}</name><trkseg>\n${wpt}\n</trkseg></trk>\n</gpx>`;
+        zip.file(`${base}.gpx`, gpx);
+        const head='ts,lat,lng,speed,accuracy,heading,tag\n'; const rows=rec.points.map(p=>[p.ts,p.lat,p.lng,p.spd??'',p.acc??'',p.hdg??'',p.tag??''].join(',')); zip.file(`${base}.csv`, head+rows.join('\n'));
+      }
+      const blob = await zip.generateAsync({type:'blob'});
+      const url = URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download=`rotas_${new Date().toISOString().slice(0,10)}.zip`; a.click();
+      URL.revokeObjectURL(url); log('📦 Exportação .zip concluída');
+    }
+
+    window.preview=(id)=>{ const rec=getById(id); if(!rec) return; path.setLatLngs(rec.points.map(p=>[p.lat,p.lng])); if(rec.points.length){ const first=rec.points[0]; const last=rec.points[rec.points.length-1]; startMarker.setLatLng([first.lat,first.lng]).addTo(map); liveMarker.setLatLng([last.lat,last.lng]).addTo(map); map.fitBounds(path.getBounds(),{padding:[30,30]}); } log(`👁️ Visualizando: ${rec.name}`); }
+
+    function bindTruckForm(){ const p=loadTruckParams(); $('#truckHeight').value=p.height||''; $('#truckWeight').value=p.weight||''; $('#truckAxles').value=p.axles||''; $('#truckHazmat').value=p.hazmat||'nao'; const handler=()=>{ const obj={ height:$('#truckHeight').value, weight:$('#truckWeight').value, axles:$('#truckAxles').value, hazmat:$('#truckHazmat').value }; saveTruckParams(obj); }; ['truckHeight','truckWeight','truckAxles','truckHazmat'].forEach(id=>$('#'+id).addEventListener('change', handler)); }
+
+    $('#btnStart').addEventListener('click', start);
+    $('#btnPause').addEventListener('click', pause);
+    $('#btnResume').addEventListener('click', resume);
+    $('#btnStop').addEventListener('click', stop);
+    $('#btnMark').addEventListener('click', mark);
+    $('#btnExportAll').addEventListener('click', exportAllZip);
+    $('#btnWipe').addEventListener('click', ()=>{ if(confirm('Apagar todo o histórico deste aparelho?')){ localStorage.removeItem('truck.tracks.v1'); renderHistory(); log('🧹 Histórico limpo'); } });
+
+    bindTruckForm();
+    renderHistory();
+
+    if(navigator.permissions && navigator.permissions.query){
+      navigator.permissions.query({name:'geolocation'}).then(res=>{ log('Permissão de geolocalização: '+res.state); }).catch(()=>{});
+    }
+  </script>
+</body>
+</html>
