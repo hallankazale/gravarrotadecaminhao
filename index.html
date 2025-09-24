@@ -100,7 +100,7 @@
 
           <div style="height:.6rem"></div>
           <details>
-            <summary>⚙️ Ajustes de rastreio (anti-ruído & auto-pausa)</summary>
+            <summary>⚙️ Ajustes de rastreio</summary>
             <div class="two-col" style="margin-top:.5rem">
               <input id="cfgMaxAcc" type="number" step="1" placeholder="Precisão máx. (m) — padrão 35">
               <input id="cfgMinStep" type="number" step="1" placeholder="Mín. deslocamento (m) — padrão 6">
@@ -146,7 +146,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script>
-    // ===== SW registration (GitHub Pages: relative path) =====
+    // ===== SW registration =====
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').then(
@@ -159,9 +159,7 @@
     // ===== HTTPS / localhost aviso =====
     (function(){
       const ok = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-      if(!ok){
-        alert('Para o GPS funcionar no celular, publique em HTTPS (GitHub Pages já é https).');
-      }
+      if(!ok){ alert('Para o GPS funcionar no celular, publique em HTTPS (GitHub Pages já é https).'); }
     })();
 
     // ===== Polyfill crypto.randomUUID() =====
@@ -202,12 +200,12 @@
     const KEY_RECOVERY='truck.recovery.v1';
 
     const defaultCfg = {
-      maxAcc: 35,       // descarta se accuracy > 35 m
-      minStep: 6,       // ignora deslocamentos menores que 6 m
-      smoothing: 0.2,   // 0=sem suavização, 1=forte (EMA)
-      autoPauseSpeed: 2.0, // km/h
-      autoPauseSec: 20,    // s parado para auto-pausar
-      autoResumeStep: 12   // m de movimento para retomar
+      maxAcc: 35,
+      minStep: 6,
+      smoothing: 0.2,
+      autoPauseSpeed: 2.0,
+      autoPauseSec: 20,
+      autoResumeStep: 12
     };
     function loadCfg(){ return Object.assign({}, defaultCfg, JSON.parse(localStorage.getItem(KEY_CFG)||'{}')); }
     function saveCfg(cfg){ localStorage.setItem(KEY_CFG, JSON.stringify(cfg)); }
@@ -219,7 +217,6 @@
     map.setView([-26.37, -48.74], 11);
     const path=L.polyline([], {color:'#22c55e', weight:5, opacity:.9}).addTo(map);
     const startMarker=L.circleMarker([0,0],{radius:6,color:'#22c55e',fill:true,fillOpacity:1});
-    // Truck marker com rotação (usando divIcon)
     const truckIcon = (deg=0)=> L.divIcon({
       className:'truck-marker',
       html:`<div style="transform:rotate(${deg}deg);width:20px;height:20px;display:grid;place-items:center">
@@ -234,7 +231,6 @@
     // ===== UI =====
     const btnStart=$('#btnStart'), btnPause=$('#btnPause'), btnResume=$('#btnResume'), btnStop=$('#btnStop'), btnMark=$('#btnMark');
     const chip=$('#statusChip');
-
     function setChip(txt,color){ chip.textContent=txt; chip.style.background=color; }
 
     // ===== Truck params =====
@@ -301,6 +297,7 @@
               <button class="ghost" onclick='downloadGPX("${rec.id}")'>⬇️ GPX</button>
               <button class="ghost" onclick='downloadKML("${rec.id}")'>⬇️ KML</button>
               <button class="ghost" onclick='downloadCSV("${rec.id}")'>⬇️ CSV</button>
+              <button class="primary" onclick='shareRoutePrompt("${rec.id}")'>📤 Compartilhar</button>
               <button class="danger" onclick='del("${rec.id}")'>🗑️ Apagar</button>
             </div>
           </div>`;
@@ -309,356 +306,89 @@
     }
     function del(id){ const all=loadAll().filter(x=>x.id!==id); saveAll(all); renderHistory(); log('🗑️ Rota removida'); }
 
-    // ===== Downloads =====
+    // ===== Nome de arquivo seguro =====
+    function baseName(name){ return name.replace(/[^\p{L}\p{N}_-]+/gu,'_'); }
+
+    // ===== Geradores de arquivos =====
+    function buildGeoJSON(rec){
+      return JSON.stringify({
+        type:'FeatureCollection',
+        features:[{
+          type:'Feature',
+          properties:{name:rec.name, startedAt:rec.startedAt, params:rec.params||null},
+          geometry:{ type:'LineString', coordinates: rec.points.map(p=>[p.lng,p.lat]) }
+        }]
+      });
+    }
+    function buildGPX(rec){
+      const wpt = rec.points.map(p=>`<trkpt lat="${p.lat}" lon="${p.lng}"><time>${new Date(p.ts).toISOString()}</time>${p.spd?`<extensions><speed>${p.spd}</speed></extensions>`:''}</trkpt>`).join('\n');
+      return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rastreador" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>${rec.name}</name><trkseg>\n${wpt}\n</trkseg></trk>\n</gpx>`;
+    }
+    function buildKML(rec){
+      const coords = rec.points.map(p=>`${p.lng},${p.lat},0`).join(' ');
+      return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><name>${rec.name}</name><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark></Document></kml>`;
+    }
+    function buildCSV(rec){
+      const head='ts,lat,lng,speed,accuracy,heading,tag\n';
+      const rows=rec.points.map(p=>[p.ts,p.lat,p.lng,p.spd??'',p.acc??'',p.hdg??'',p.tag??''].join(','));
+      return head+rows.join('\n');
+    }
+
+    // ===== Download helpers =====
     function download(filename, text, mime='text/plain'){
       const a=document.createElement('a'); a.href=`data:${mime};charset=utf-8,`+encodeURIComponent(text); a.download=filename; a.click();
     }
-    function baseName(name){ return name.replace(/[^\p{L}\p{N}_-]+/gu,'_'); }
-
     window.downloadGeoJSON=(id)=>{ const rec=getById(id); if(!rec) return;
-      const geo={ type:'FeatureCollection', features:[{ type:'Feature', properties:{name:rec.name, startedAt:rec.startedAt, params:rec.params||null}, geometry:{ type:'LineString', coordinates: rec.points.map(p=>[p.lng,p.lat]) } }] };
-      download(`${baseName(rec.name)}.geojson`, JSON.stringify(geo), 'application/geo+json');
+      download(`${baseName(rec.name)}.geojson`, buildGeoJSON(rec), 'application/geo+json');
     };
     window.downloadGPX=(id)=>{ const rec=getById(id); if(!rec) return;
-      const wpt = rec.points.map(p=>`<trkpt lat="${p.lat}" lon="${p.lng}"><time>${new Date(p.ts).toISOString()}</time>${p.spd?`<extensions><speed>${p.spd}</speed></extensions>`:''}</trkpt>`).join('\n');
-      const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rastreador" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>${rec.name}</name><trkseg>\n${wpt}\n</trkseg></trk>\n</gpx>`;
-      download(`${baseName(rec.name)}.gpx`, gpx, 'application/gpx+xml');
+      download(`${baseName(rec.name)}.gpx`, buildGPX(rec), 'application/gpx+xml');
     };
     window.downloadKML=(id)=>{ const rec=getById(id); if(!rec) return;
-      const coords = rec.points.map(p=>`${p.lng},${p.lat},0`).join(' ');
-      const kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><name>${rec.name}</name><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark></Document></kml>`;
-      download(`${baseName(rec.name)}.kml`, kml, 'application/vnd.google-earth.kml+xml');
+      download(`${baseName(rec.name)}.kml`, buildKML(rec), 'application/vnd.google-earth.kml+xml');
     };
     window.downloadCSV=(id)=>{ const rec=getById(id); if(!rec) return;
-      const head='ts,lat,lng,speed,accuracy,heading,tag\n';
-      const rows=rec.points.map(p=>[p.ts,p.lat,p.lng,p.spd??'',p.acc??'',p.hdg??'',p.tag??''].join(','));
-      download(`${baseName(rec.name)}.csv`, head+rows.join('\n'), 'text/csv');
+      download(`${baseName(rec.name)}.csv`, buildCSV(rec), 'text/csv');
     };
 
-    async function exportAllZip(){
-      const zip = new JSZip(); const all = loadAll(); if(!all.length){ alert('Nada para exportar.'); return; }
-      for(const rec of all){
-        const base = baseName(rec.name);
-        const geo={ type:'FeatureCollection', features:[{ type:'Feature', properties:{name:rec.name, startedAt:rec.startedAt, params:rec.params||null}, geometry:{ type:'LineString', coordinates: rec.points.map(p=>[p.lng,p.lat]) } }] };
-        zip.file(`${base}.geojson`, JSON.stringify(geo));
-        const wpt = rec.points.map(p=>`<trkpt lat="${p.lat}" lon="${p.lng}"><time>${new Date(p.ts).toISOString()}</time></trkpt>`).join('\n');
-        const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rastreador" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>${rec.name}</name><trkseg>\n${wpt}\n</trkseg></trk>\n</gpx>`;
-        zip.file(`${base}.gpx`, gpx);
-        const coords = rec.points.map(p=>`${p.lng},${p.lat},0`).join(' ');
-        const kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><name>${rec.name}</name><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark></Document></kml>`;
-        zip.file(`${base}.kml`, kml);
-        const head='ts,lat,lng,speed,accuracy,heading,tag\n'; const rows=rec.points.map(p=>[p.ts,p.lat,p.lng,p.spd??'',p.acc??'',p.hdg??'',p.tag??''].join(',')); zip.file(`${base}.csv`, head+rows.join('\n'));
-      }
-      const blob = await zip.generateAsync({type:'blob'});
-      const url = URL.createObjectURL(blob);
-      const a=document.createElement('a'); a.href=url; a.download=`rotas_${new Date().toISOString().slice(0,10)}.zip`; a.click();
-      URL.revokeObjectURL(url); log('📦 Exportação .zip concluída');
-    }
-
-    async function restoreFromZip(file){
+    // ===== Compartilhar (Web Share API + fallback) =====
+    async function shareBlob(filename, mime, content, summaryText){
       try{
-        const zip = await JSZip.loadAsync(file);
-        const all = loadAll();
-        for (const name of Object.keys(zip.files)){
-          if(!/\.(geojson|gpx|kml|csv)$/i.test(name)) continue;
-          const data = await zip.files[name].async('string');
-          // Só GeoJSON é restauração "completa"; os outros ignoramos pra manter simples
-          if(name.endsWith('.geojson')){
-            const geo = JSON.parse(data);
-            const f = geo.features?.[0];
-            if(!f) continue;
-            const rec = {
-              id: crypto.randomUUID(),
-              name: f.properties?.name || name.replace('.geojson',''),
-              startedAt: f.properties?.startedAt || Date.now(),
-              durationSec: 0,
-              distanceM: 0,
-              points: (f.geometry?.coordinates||[]).map(([lng,lat])=>({lat,lng,ts:Date.now()})),
-              params: f.properties?.params || {},
-              createdAt: Date.now()
-            };
-            // Recalcula métricas
-            let dist=0; for(let i=1;i<rec.points.length;i++){ dist+=haversine(rec.points[i-1],rec.points[i]); }
-            rec.distanceM=dist;
-            rec.durationSec = 0;
-            all.unshift(rec);
-          }
+        const file = new File([content], filename, {type:mime});
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ title: filename, text: summaryText, files: [file] });
+          log('📤 Compartilhado via Web Share API.');
+          return true;
         }
-        saveAll(all); renderHistory(); log('📥 Backup restaurado (apenas .geojson processado)');
-      }catch(e){ console.error(e); alert('Falha ao restaurar .zip'); }
-    }
-
-    // ===== Sessão =====
-    function resetSession(){
-      points=[]; startedAt=null; pausedAt=null; pausedAccum=0; idleAccum=0; lastAccepted=null; maxSpeed=0; idleStart=null; autoPaused=false;
-    }
-    function start(){
-      if(!('geolocation' in navigator)){ alert('Geolocalização não disponível.'); return; }
-      resetSession(); startedAt=Date.now(); paused=false; tracking=true;
-      setChip('Gravando','#22c55e');
-      $('#startTimeLabel').textContent=new Date(startedAt).toLocaleString();
-      btnStart.disabled=true; btnPause.disabled=false; btnStop.disabled=false; btnMark.disabled=false; btnResume.disabled=true;
-      path.setLatLngs([]);
-      try{ startMarker.remove(); liveMarker.remove(); }catch(e){}
-      watchId=navigator.geolocation.watchPosition(onPos,onErr,{ enableHighAccuracy:true, maximumAge:1500, timeout:20000 });
-      log('▶️ Iniciado (aguardando GPS...)');
-      // Guarda estado p/ recuperação
-      localStorage.setItem(KEY_RECOVERY, JSON.stringify({startedAt, pausedAccum, points}));
-    }
-
-    function pauseManual(){
-      if(!tracking||paused) return;
-      paused=true; pausedAt=Date.now();
-      btnPause.disabled=true; btnResume.disabled=false;
-      setChip('Pausado','#f59e0b'); log('⏸️ Pausado');
-    }
-    function resumeManual(){
-      if(!tracking||!paused) return;
-      paused=false; pausedAccum += Date.now()-pausedAt; pausedAt=null; btnPause.disabled=false; btnResume.disabled=true;
-      setChip('Gravando','#22c55e'); log('▶️ Retomado');
-    }
-
-    function stop(){
-      if(watchId!=null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
-      tracking=false; paused=false; autoPaused=false;
-      btnStart.disabled=false; btnPause.disabled=true; btnResume.disabled=true; btnStop.disabled=true; btnMark.disabled=true;
-      setChip('Parado','#334155');
-      const data=buildSummary();
-      if(points.length>1){
-        const name=$('#routeName').value.trim()||`Rota ${new Date(startedAt).toLocaleString()}`;
-        const params=loadTruckParams();
-        const rec={id:crypto.randomUUID(), name, startedAt, durationSec:data.durationSec, distanceM:data.distanceM, points, params, createdAt:Date.now()};
-        const all=loadAll(); all.unshift(rec); saveAll(all); renderHistory();
-        log(`💾 Rota salva: "${name}" • ${points.length} pts • ${fmtKm(data.distanceM)} • vmax ${data.maxSpeed.toFixed(1)} km/h`);
-      } else {
-        log('ℹ️ Nenhum ponto útil coletado.');
-      }
-      localStorage.removeItem(KEY_RECOVERY);
-      resetSession();
-      updateMetrics(); // zera UI
-    }
-
-    function askTag(){
-      const opts=['Parada','Pedágio','Posto','Perigoso','Restrição','Outro'];
-      const pick=prompt('Tipo do ponto?\n'+opts.map((o,i)=>`${i+1}. ${o}`).join('\n'));
-      const idx=Number(pick)-1; return opts[idx]||'Marcado';
-    }
-    function mark(){
-      if(points.length){
-        const last=points[points.length-1];
-        const tag=askTag();
-        last.tag=tag;
-        L.circleMarker([last.lat,last.lng],{radius:5,color:'#eab308',fill:true,fillOpacity:1}).addTo(map).bindTooltip(tag);
-        log('📍 Ponto manual: '+tag);
-      }
-    }
-
-    function onPos(pos){
-      const {latitude:lat, longitude:lng, accuracy, speed, heading}=pos.coords; const ts=pos.timestamp;
-      $('#gpsQuality').textContent=`±${Math.round(accuracy)} m`;
-      if(!tracking) return;
-
-      // descarta por pausa manual
-      if(paused) return;
-
-      // Filtro de precisão
-      if(accuracy && accuracy > cfg.maxAcc){ return; }
-
-      let p={lat,lng, ts, spd:speed??null, acc:accuracy??null, hdg:heading??null};
-
-      // Suavização EMA (aplicada sobre último ponto aceito)
-      if(lastAccepted && cfg.smoothing>0){
-        p.lat = lastAccepted.lat + (p.lat - lastAccepted.lat)*cfg.smoothing;
-        p.lng = lastAccepted.lng + (p.lng - lastAccepted.lng)*cfg.smoothing;
-      }
-
-      // Distância do último ponto aceito
-      if(lastAccepted){
-        const d = haversine(lastAccepted, p);
-        if(d < cfg.minStep){ // ignora tremida
-          // Atualiza métricas de ociosidade
-          handleIdle(kmh(speed||0), d, ts);
-          return;
+        if (navigator.share) {
+          await navigator.share({ title: filename, text: summaryText });
+          log('📤 Compartilhado (somente texto).');
+          download(filename, content, mime);
+          return true;
         }
-        // descarta salto irreal (heurística: > 150 m/s ≈ 540 km/h)
-        const dt = (ts - (lastAccepted.ts||ts))/1000 || 1;
-        const instSpeed = d/dt; // m/s
-        if(instSpeed > 150){ log('⚠️ Salto descartado'); return; }
-      }
-
-      // aceitar ponto
-      points.push(p);
-      lastAccepted = p;
-
-      // auto-pausa & retomar
-      autoPauseLogic(p);
-
-      // atualizar UI do mapa
-      liveMarker.setLatLng([p.lat,p.lng]).setIcon(truckIcon((p.hdg??0)));
-      liveMarker.addTo(map);
-      if(points.length===1){
-        startMarker.setLatLng([p.lat,p.lng]).addTo(map); map.setView([p.lat,p.lng], 16);
-      } else {
-        path.addLatLng([p.lat,p.lng]); map.panTo([p.lat,p.lng]);
-      }
-
-      // métricas
-      if(speed!=null){ const sKmh = kmh(speed); maxSpeed = Math.max(maxSpeed, sKmh); }
-      handleIdle(kmh(speed||0), 0, ts);
-      updateMetrics();
-      // guarda recuperação periódica
-      if(points.length % 5 === 0){
-        localStorage.setItem(KEY_RECOVERY, JSON.stringify({startedAt, pausedAccum, points}));
-      }
-    }
-
-    function onErr(err){ log(`❌ GPS: ${err.code} - ${err.message}`); }
-
-    function handleIdle(currKmh, d, ts){
-      const moving = currKmh > cfg.autoPauseSpeed;
-      if(!moving){
-        if(!idleStart) idleStart = ts;
-        idleAccum = Math.max(0, Math.round(((Date.now()) - (idleStart||Date.now()))/1000));
-      }else{
-        idleStart = null;
-      }
-    }
-
-    function autoPauseLogic(p){
-      const sKmh = kmh(p.spd||0);
-      if(!autoPaused && sKmh <= cfg.autoPauseSpeed){
-        // se ficar parado por N s, auto-pausa
-        if(!idleStart) idleStart = p.ts;
-        const idleSec = Math.max(0, Math.round((p.ts - idleStart)/1000));
-        if(idleSec >= cfg.autoPauseSec){
-          autoPaused = true; paused=true; pausedAt=Date.now();
-          btnPause.disabled=true; btnResume.disabled=false;
-          setChip('Auto-pausado','#f59e0b'); log('⏸️ Auto-pausado (parado)');
+      } catch (e){ /* cancelado, seguimos pro fallback */ }
+      try{
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(summaryText);
+          log('📋 Resumo copiado. Iniciando download do arquivo...');
         }
-      } else if(autoPaused && lastAccepted){
-        // retoma com deslocamento mínimo
-        const d = haversine(lastAccepted, p);
-        if(d >= cfg.autoResumeStep){
-          paused=false; autoPaused=false;
-          pausedAccum += Date.now()- (pausedAt||Date.now());
-          pausedAt=null; btnPause.disabled=false; btnResume.disabled=true;
-          setChip('Gravando','#22c55e'); log('▶️ Retomado automaticamente (movimento detectado)');
-        }
+      } finally {
+        download(filename, content, mime);
       }
+      return false;
     }
 
-    function buildSummary(){
-      let dist=0; for(let i=1;i<points.length;i++){ dist+=haversine(points[i-1],points[i]); }
-      const now=Date.now();
-      const durationSec=Math.max(0, Math.round(((paused?pausedAt:now)-startedAt-pausedAccum)/1000));
-      const avgSpeed = durationSec>0? (dist/1000)/(durationSec/3600):0;
-      return {distanceM:dist, durationSec, avgSpeed, maxSpeed};
-    }
-
-    function updateMetrics(){
-      const s=buildSummary();
-      $('#mDistance').textContent=fmtKm(s.distanceM);
-      $('#mDuration').textContent=fmtHms(s.durationSec);
-      $('#mAvgSpeed').textContent=`${s.avgSpeed.toFixed(1)} km/h`;
-      $('#mMaxSpeed').textContent=`${maxSpeed.toFixed(1)} km/h`;
-      $('#mIdle').textContent=fmtHms(idleAccum);
-      $('#mPoints').textContent=String(points.length);
-    }
-
-    // ===== Preview no mapa =====
-    window.preview=(id)=>{
+    window.shareRoutePrompt=(id)=>{
       const rec=getById(id); if(!rec) return;
-      path.setLatLngs(rec.points.map(p=>[p.lat,p.lng]));
-      if(rec.points.length){
-        const first=rec.points[0]; const last=rec.points[rec.points.length-1];
-        startMarker.setLatLng([first.lat,first.lng]).addTo(map);
-        liveMarker.setLatLng([last.lat,last.lng]).addTo(map);
-        map.fitBounds(path.getBounds(),{padding:[30,30]});
-      }
-      log(`👁️ Visualizando: ${rec.name}`);
-    };
+      const choice = prompt(
+        `Compartilhar rota "${rec.name}" em qual formato?\n`+
+        `1) GeoJSON (padrão GIS)\n`+
+        `2) GPX (apps de trilha/GPS)\n`+
+        `3) KML (Google Earth)\n`+
+        `4) CSV (tabela)`
+      );
+      const opt = Number(choice);
+      if (![1,2,3,4].includes(opt)) return;
 
-    // ===== Indicadores (best-effort) =====
-    async function setupBattery(){
-      try{
-        if('getBattery' in navigator){
-          const b = await navigator.getBattery();
-          const el=$('#batteryInfo');
-          const upd=()=> el.textContent = `🔋 ${Math.round(b.level*100)}% ${b.charging?'(carregando)':''}`;
-          upd(); b.addEventListener('levelchange',upd); b.addEventListener('chargingchange',upd);
-        }
-      }catch{}
-    }
-    function setupNet(){
-      const n = navigator.connection || navigator.webkitConnection || navigator.mozConnection;
-      const el=$('#netInfo');
-      const upd=()=> el.textContent = `🌐 ${navigator.onLine?'online':'offline'}${n?` • ${n.effectiveType}`:''}`;
-      upd(); window.addEventListener('online',upd); window.addEventListener('offline',upd);
-      if(n) n.addEventListener('change',upd);
-    }
-    function setupPerm(){
-      const el=$('#permInfo');
-      if(navigator.permissions?.query){
-        navigator.permissions.query({name:'geolocation'}).then(res=>{
-          const upd=()=>{ el.textContent='🔑 geo: '+res.state; log('Permissão de geolocalização: '+res.state); };
-          upd(); res.addEventListener('change',upd);
-        }).catch(()=>{});
-      } else { el.textContent='🔑 —'; }
-    }
-
-    // ===== Recuperação de sessão (se recarregar a página) =====
-    function tryRecovery(){
-      const raw = localStorage.getItem(KEY_RECOVERY);
-      if(!raw) return;
-      try{
-        const rec = JSON.parse(raw);
-        if(rec.startedAt && rec.points?.length){
-          if(confirm('Encontramos uma sessão anterior. Deseja retomar o rastreio?')){
-            points = rec.points||[];
-            startedAt = rec.startedAt;
-            pausedAccum = rec.pausedAccum||0;
-            tracking=true; paused=false;
-            setChip('Gravando','#22c55e');
-            $('#startTimeLabel').textContent=new Date(startedAt).toLocaleString();
-            btnStart.disabled=true; btnPause.disabled=false; btnStop.disabled=true; btnMark.disabled=false; btnResume.disabled=true;
-            // Redesenha trajeto atual na UI
-            path.setLatLngs(points.map(p=>[p.lat,p.lng]));
-            if(points.length){
-              lastAccepted = points[points.length-1];
-              startMarker.setLatLng([points[0].lat,points[0].lng]).addTo(map);
-              liveMarker.setLatLng([lastAccepted.lat,lastAccepted.lng]).addTo(map);
-              map.fitBounds(path.getBounds(),{padding:[30,30]});
-            }
-            updateMetrics();
-            // Reinicia watch
-            watchId=navigator.geolocation.watchPosition(onPos,onErr,{ enableHighAccuracy:true, maximumAge:1500, timeout:20000 });
-            log('♻️ Sessão retomada.');
-          } else {
-            localStorage.removeItem(KEY_RECOVERY);
-          }
-        }
-      }catch{}
-    }
-
-    // ===== Bindings =====
-    $('#btnStart').addEventListener('click', start);
-    $('#btnPause').addEventListener('click', pauseManual);
-    $('#btnResume').addEventListener('click', resumeManual);
-    $('#btnStop').addEventListener('click', stop);
-    $('#btnMark').addEventListener('click', mark);
-    $('#btnExportAll').addEventListener('click', exportAllZip);
-    $('#btnWipe').addEventListener('click', ()=>{ if(confirm('Apagar todo o histórico deste aparelho?')){ localStorage.removeItem(KEY); renderHistory(); log('🧹 Histórico limpo'); } });
-    $('#btnRestore').addEventListener('click', ()=>$('#fileRestore').click());
-    $('#fileRestore').addEventListener('change', (e)=>{ const f=e.target.files?.[0]; if(f) restoreFromZip(f); });
-
-    bindTruckForm();
-    bindCfgForm();
-    renderHistory();
-    setupBattery(); setupNet(); setupPerm();
-    tryRecovery();
-
-    // Inicializa mapa com centro padrão
-    // (Se quiser centralizar no "meu local" ao abrir: use uma única leitura getCurrentPosition aqui)
-  </script>
-</body>
-</html>
+      const started = new Date(rec.startedAt).toLocaleString();
+      const distKm = (rec.distanceM/1000).toFixed(2).replace('.',
