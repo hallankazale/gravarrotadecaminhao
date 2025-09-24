@@ -1,4 +1,4 @@
-// sw.js
+// sw.js — cache simples para uso offline
 const CACHE_NAME = "truck-tracker-v1";
 const APP_SHELL = [
   "./",
@@ -12,9 +12,7 @@ const APP_SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
   self.skipWaiting();
 });
 
@@ -27,20 +25,17 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Estratégia: cache-first para shell; network-first pro resto
+// Cache-first para shell; network-first pro restante
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Cache-first para arquivos do app
-  if (APP_SHELL.some((path) => url.href.endsWith(path) || url.pathname.endsWith(path.replace("./","/")))) {
-    event.respondWith(
-      caches.match(request).then((res) => res || fetch(request))
-    );
+  const isShell = APP_SHELL.some((p) => url.href.endsWith(p) || url.pathname.endsWith(p.replace("./","/")));
+  if (isShell) {
+    event.respondWith(caches.match(request).then((res) => res || fetch(request)));
     return;
   }
 
-  // Network-first para outras requisições (ex.: tiles do mapa)
   event.respondWith(
     fetch(request)
       .then((res) => {
