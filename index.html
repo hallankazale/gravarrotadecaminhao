@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#22c55e">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <style>
     :root{ --bg:#0f172a; --fg:#e5e7eb; --muted:#94a3b8; --acc:#22c55e; --warn:#f59e0b; --err:#ef4444; --card:#111827 }
@@ -40,6 +40,8 @@
     .log{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8rem;max-height:22vh;overflow:auto;background:#0b1220;border:1px solid #1f2937;border-radius:10px;padding:.6rem}
     .tag{display:inline-block;background:#0b1220;border:1px solid #1f2937;padding:.15rem .45rem;border-radius:8px;margin-right:.25rem}
     input,select{background:#0b1220;color:#e5e7eb;border:1px solid #1f2937;border-radius:10px;padding:.6rem;width:100%}
+    details summary{cursor:pointer;color:#cbd5e1}
+    .meta-row{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
   </style>
 </head>
 <body>
@@ -51,18 +53,28 @@
 
     <section class="cards">
       <div class="card">
-        <div class="head"><h2>Mapa & Trajeto</h2><small id="gpsQuality">—</small></div>
+        <div class="head">
+          <h2>Mapa & Trajeto</h2>
+          <small id="gpsQuality">—</small>
+        </div>
         <div class="body"><div id="map"></div></div>
       </div>
+
       <div class="card">
-        <div class="head"><h2>Sessão atual</h2><small id="startTimeLabel">—</small></div>
+        <div class="head">
+          <h2>Sessão atual</h2>
+          <small id="startTimeLabel">—</small>
+        </div>
         <div class="body">
           <div class="two-col">
             <div class="metric"><div class="label">Tempo</div><div id="mDuration" class="value">00:00:00</div></div>
             <div class="metric"><div class="label">Distância</div><div id="mDistance" class="value">0,00 km</div></div>
-            <div class="metric"><div class="label">Velocidade média</div><div id="mAvgSpeed" class="value">0.0 km/h</div></div>
+            <div class="metric"><div class="label">Velocidade média</div><div id="mAvgSpeed" class="value">0,0 km/h</div></div>
+            <div class="metric"><div class="label">Velocidade máx.</div><div id="mMaxSpeed" class="value">0,0 km/h</div></div>
+            <div class="metric"><div class="label">Tempo parado</div><div id="mIdle" class="value">00:00:00</div></div>
             <div class="metric"><div class="label">Pontos</div><div id="mPoints" class="value">0</div></div>
           </div>
+
           <div style="height:.6rem"></div>
           <div class="controls">
             <button id="btnStart" class="primary">▶️ Iniciar</button>
@@ -71,9 +83,11 @@
             <button id="btnStop" class="danger" disabled>⏹️ Finalizar & Salvar</button>
             <button id="btnMark" class="ghost" disabled>📍 Marcar ponto</button>
           </div>
+
           <div style="height:.6rem"></div>
           <label>Nome da rota (opcional)</label>
           <input id="routeName" placeholder="Ex.: Entrega 24/09 – Araquari → Joinville" />
+
           <div style="height:.6rem"></div>
           <h3 style="margin:.2rem 0;font-size:.9rem;color:#cbd5e1">Parâmetros do caminhão (salvos no aparelho)</h3>
           <div class="two-col">
@@ -83,17 +97,43 @@
             <select id="truckHazmat"><option value="nao">Sem HAZMAT</option><option value="sim">Com HAZMAT</option></select>
           </div>
           <small class="tag">Dados guardados localmente (localStorage).</small>
+
+          <div style="height:.6rem"></div>
+          <details>
+            <summary>⚙️ Ajustes de rastreio (anti-ruído & auto-pausa)</summary>
+            <div class="two-col" style="margin-top:.5rem">
+              <input id="cfgMaxAcc" type="number" step="1" placeholder="Precisão máx. (m) — padrão 35">
+              <input id="cfgMinStep" type="number" step="1" placeholder="Mín. deslocamento (m) — padrão 6">
+              <input id="cfgSmoothing" type="number" step="0.1" placeholder="Suavização 0–1 — padrão 0.2">
+              <input id="cfgAutoPauseSpeed" type="number" step="0.1" placeholder="Auto-pausa abaixo de (km/h) — padrão 2.0">
+              <input id="cfgAutoPauseSec" type="number" step="1" placeholder="Auto-pausa após (s) — padrão 20">
+              <input id="cfgAutoResumeStep" type="number" step="1" placeholder="Auto-retomar ao mover (m) — padrão 12">
+            </div>
+            <small class="tag">Ajustes são salvos automaticamente.</small>
+          </details>
+
+          <div style="height:.6rem"></div>
+          <div class="meta-row">
+            <small id="batteryInfo" class="tag">🔋 —</small>
+            <small id="netInfo" class="tag">🌐 —</small>
+            <small id="permInfo" class="tag">🔑 —</small>
+          </div>
         </div>
       </div>
     </section>
 
     <div class="card">
-      <div class="head"><h2>Histórico salvo no aparelho</h2><small><span class="tag">localStorage</span></small></div>
+      <div class="head">
+        <h2>Histórico salvo no aparelho</h2>
+        <small><span class="tag">localStorage</span></small>
+      </div>
       <div class="body">
         <div class="controls" style="margin-bottom:.5rem">
           <button class="ghost" id="btnExportAll">📦 Exportar tudo (.zip)</button>
           <button class="ghost" id="btnWipe">🧹 Limpar tudo</button>
+          <button class="ghost" id="btnRestore">📥 Restaurar backup (.zip)</button>
         </div>
+        <input id="fileRestore" type="file" accept=".zip" style="display:none">
         <div id="history"></div>
       </div>
     </div>
@@ -133,11 +173,13 @@
       });
     }
 
-    // ===== Util =====
+    // ===== Utils =====
     const $ = (sel)=>document.querySelector(sel);
     const log = (msg)=>{ const el=$('#log'); const t=new Date().toLocaleTimeString(); el.innerText = `[${t}] ${msg}\n` + el.innerText; };
     const fmtKm = m => (m/1000).toFixed(2).replace('.',',') + ' km';
     const fmtHms = (sec)=> new Date(sec*1000).toISOString().substring(11,19);
+    const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+    const kmh = (mps)=> (mps??0)*3.6;
 
     function haversine(a,b){
       const toRad=d=>d*Math.PI/180, R=6371e3;
@@ -148,8 +190,28 @@
     }
 
     // ===== Estado =====
-    let watchId=null, tracking=false, paused=false;
-    let points=[], startedAt=null, pausedAt=null, pausedAccum=0;
+    let watchId=null, tracking=false, paused=false, autoPaused=false;
+    let points=[], startedAt=null, pausedAt=null, pausedAccum=0, idleAccum=0;
+    let lastAccepted=null, maxSpeed=0;
+    let idleStart=null;
+
+    // ===== Config (persistida) =====
+    const KEY='truck.tracks.v1';
+    const KEY_TRUCK='truck.params.v1';
+    const KEY_CFG='truck.cfg.v1';
+    const KEY_RECOVERY='truck.recovery.v1';
+
+    const defaultCfg = {
+      maxAcc: 35,       // descarta se accuracy > 35 m
+      minStep: 6,       // ignora deslocamentos menores que 6 m
+      smoothing: 0.2,   // 0=sem suavização, 1=forte (EMA)
+      autoPauseSpeed: 2.0, // km/h
+      autoPauseSec: 20,    // s parado para auto-pausar
+      autoResumeStep: 12   // m de movimento para retomar
+    };
+    function loadCfg(){ return Object.assign({}, defaultCfg, JSON.parse(localStorage.getItem(KEY_CFG)||'{}')); }
+    function saveCfg(cfg){ localStorage.setItem(KEY_CFG, JSON.stringify(cfg)); }
+    let cfg = loadCfg();
 
     // ===== Mapa =====
     const map=L.map('map',{zoomControl:false});
@@ -157,80 +219,64 @@
     map.setView([-26.37, -48.74], 11);
     const path=L.polyline([], {color:'#22c55e', weight:5, opacity:.9}).addTo(map);
     const startMarker=L.circleMarker([0,0],{radius:6,color:'#22c55e',fill:true,fillOpacity:1});
-    const liveMarker=L.circleMarker([0,0],{radius:6,color:'#38bdf8',fill:true,fillOpacity:1});
+    // Truck marker com rotação (usando divIcon)
+    const truckIcon = (deg=0)=> L.divIcon({
+      className:'truck-marker',
+      html:`<div style="transform:rotate(${deg}deg);width:20px;height:20px;display:grid;place-items:center">
+              <svg viewBox="0 0 24 24" width="20" height="20">
+                <path d="M4 16h1a2 2 0 1 0 4 0h6a2 2 0 1 0 4 0h1v-4l-3-4h-4V6H4v10z" fill="#38bdf8"/>
+              </svg>
+            </div>`,
+      iconSize:[20,20], iconAnchor:[10,10]
+    });
+    let liveMarker=L.marker([0,0], {icon:truckIcon(0)});
 
     // ===== UI =====
     const btnStart=$('#btnStart'), btnPause=$('#btnPause'), btnResume=$('#btnResume'), btnStop=$('#btnStop'), btnMark=$('#btnMark');
     const chip=$('#statusChip');
 
-    function start(){
-      if(!('geolocation' in navigator)){ alert('Geolocalização não disponível.'); return; }
-      points=[]; startedAt=Date.now(); pausedAccum=0; paused=false; tracking=true;
-      chip.textContent='Gravando'; chip.style.background='#22c55e';
-      $('#startTimeLabel').textContent=new Date(startedAt).toLocaleString();
-      btnStart.disabled=true; btnPause.disabled=false; btnStop.disabled=false; btnMark.disabled=false; btnResume.disabled=true;
-      path.setLatLngs([]);
-      try{ startMarker.remove(); liveMarker.remove(); }catch(e){/* ignore */}
-      watchId=navigator.geolocation.watchPosition(onPos,onErr,{ enableHighAccuracy:true, maximumAge:2000, timeout:20000 });
-      log('▶️ Iniciado (aguardando GPS...)');
-    }
+    function setChip(txt,color){ chip.textContent=txt; chip.style.background=color; }
 
-    function pause(){ if(!tracking||paused) return; paused=true; pausedAt=Date.now(); btnPause.disabled=true; btnResume.disabled=false; chip.textContent='Pausado'; chip.style.background='#f59e0b'; log('⏸️ Pausado'); }
-    function resume(){ if(!tracking||!paused) return; paused=false; pausedAccum += Date.now()-pausedAt; pausedAt=null; btnPause.disabled=false; btnResume.disabled=true; chip.textContent='Gravando'; chip.style.background='#22c55e'; log('▶️ Retomado'); }
-
-    function stop(){
-      if(watchId!=null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
-      tracking=false; paused=false;
-      btnStart.disabled=false; btnPause.disabled=true; btnResume.disabled=true; btnStop.disabled=true; btnMark.disabled=true;
-      chip.textContent='Parado'; chip.style.background='#334155';
-      const data=buildSummary();
-      if(points.length>0){
-        const name=$('#routeName').value.trim()||`Rota ${new Date(startedAt).toLocaleString()}`;
-        const params=loadTruckParams();
-        const rec={id:crypto.randomUUID(), name, startedAt, duration:data.durationSec, distance:data.distanceM, points, params, createdAt:Date.now()};
-        const all=loadAll(); all.unshift(rec); saveAll(all); renderHistory();
-        log(`💾 Rota salva: "${name}" com ${points.length} pontos e ${fmtKm(data.distanceM)}`);
-      } else { log('ℹ️ Nenhum ponto coletado.'); }
-    }
-
-    function askTag(){
-      const opts=['Parada','Pedágio','Posto','Perigoso','Restrição','Outro'];
-      const pick=prompt('Tipo do ponto?\n'+opts.map((o,i)=>`${i+1}. ${o}`).join('\n'));
-      const idx=Number(pick)-1; return opts[idx]||'Marcado';
-    }
-
-    function mark(){ if(points.length){ const last=points[points.length-1]; const tag=askTag(); last.tag=tag; L.circleMarker([last.lat,last.lng],{radius:5,color:'#eab308',fill:true,fillOpacity:1}).addTo(map).bindTooltip(tag); log('📍 Ponto manual: '+tag); } }
-
-    function onPos(pos){
-      const {latitude:lat, longitude:lng, accuracy, speed, heading}=pos.coords; const ts=pos.timestamp;
-      $('#gpsQuality').textContent=`±${Math.round(accuracy)} m`;
-      if(!tracking||paused) return;
-      const p={lat,lng, ts, spd:speed??null, acc:accuracy, hdg:heading??null};
-      points.push(p);
-      liveMarker.setLatLng([lat,lng]).addTo(map);
-      if(points.length===1){ startMarker.setLatLng([lat,lng]).addTo(map); map.setView([lat,lng], 16);} else { path.addLatLng([lat,lng]); map.panTo([lat,lng]); }
-      updateMetrics();
-    }
-
-    function onErr(err){ log(`❌ GPS: ${err.code} - ${err.message}`); }
-
-    function buildSummary(){
-      let dist=0; for(let i=1;i<points.length;i++){ dist+=haversine(points[i-1],points[i]); }
-      const now=Date.now();
-      const durationSec=Math.max(0, Math.round(((paused?pausedAt:now)-startedAt-pausedAccum)/1000));
-      const avgSpeed = durationSec>0? (dist/1000)/(durationSec/3600):0;
-      return {distanceM:dist, durationSec, avgSpeed};
-    }
-
-    function updateMetrics(){ const s=buildSummary(); $('#mDistance').textContent=fmtKm(s.distanceM); $('#mDuration').textContent=fmtHms(s.durationSec); $('#mAvgSpeed').textContent=`${s.avgSpeed.toFixed(1)} km/h`; $('#mPoints').textContent=String(points.length); }
-
-    // ===== Persistência =====
-    const KEY='truck.tracks.v1';
-    const KEY_TRUCK='truck.params.v1';
-    const loadAll=()=>JSON.parse(localStorage.getItem(KEY)||'[]');
-    const saveAll=(arr)=>localStorage.setItem(KEY, JSON.stringify(arr));
+    // ===== Truck params =====
     function loadTruckParams(){ return JSON.parse(localStorage.getItem(KEY_TRUCK)||'{}'); }
     function saveTruckParams(obj){ localStorage.setItem(KEY_TRUCK, JSON.stringify(obj)); }
+    function bindTruckForm(){
+      const p=loadTruckParams();
+      $('#truckHeight').value=p.height||''; $('#truckWeight').value=p.weight||''; $('#truckAxles').value=p.axles||''; $('#truckHazmat').value=p.hazmat||'nao';
+      const handler=()=>{ const obj={ height:$('#truckHeight').value, weight:$('#truckWeight').value, axles:$('#truckAxles').value, hazmat:$('#truckHazmat').value }; saveTruckParams(obj); };
+      ['truckHeight','truckWeight','truckAxles','truckHazmat'].forEach(id=>$('#'+id).addEventListener('change', handler));
+    }
+
+    // ===== Config form =====
+    function applyCfgToForm(){
+      $('#cfgMaxAcc').value = cfg.maxAcc;
+      $('#cfgMinStep').value = cfg.minStep;
+      $('#cfgSmoothing').value = cfg.smoothing;
+      $('#cfgAutoPauseSpeed').value = cfg.autoPauseSpeed;
+      $('#cfgAutoPauseSec').value = cfg.autoPauseSec;
+      $('#cfgAutoResumeStep').value = cfg.autoResumeStep;
+    }
+    function bindCfgForm(){
+      const ids=['cfgMaxAcc','cfgMinStep','cfgSmoothing','cfgAutoPauseSpeed','cfgAutoPauseSec','cfgAutoResumeStep'];
+      ids.forEach(id=>{
+        $('#'+id).addEventListener('change', ()=>{
+          cfg.maxAcc = Number($('#cfgMaxAcc').value)||defaultCfg.maxAcc;
+          cfg.minStep = Number($('#cfgMinStep').value)||defaultCfg.minStep;
+          cfg.smoothing = clamp(Number($('#cfgSmoothing').value),0,1);
+          cfg.autoPauseSpeed = Number($('#cfgAutoPauseSpeed').value)||defaultCfg.autoPauseSpeed;
+          cfg.autoPauseSec = Number($('#cfgAutoPauseSec').value)||defaultCfg.autoPauseSec;
+          cfg.autoResumeStep = Number($('#cfgAutoResumeStep').value)||defaultCfg.autoResumeStep;
+          saveCfg(cfg);
+          log('⚙️ Configurações atualizadas');
+        });
+      });
+      applyCfgToForm();
+    }
+
+    // ===== Persistência rotas =====
+    const loadAll=()=>JSON.parse(localStorage.getItem(KEY)||'[]');
+    const saveAll=(arr)=>localStorage.setItem(KEY, JSON.stringify(arr));
+    function getById(id){ return loadAll().find(x=>x.id===id); }
 
     function renderHistory(){
       const cont=$('#history'); cont.innerHTML='';
@@ -253,6 +299,7 @@
               <button class="secondary" onclick='preview("${rec.id}")'>👁️ Visualizar</button>
               <button class="ghost" onclick='downloadGeoJSON("${rec.id}")'>⬇️ GeoJSON</button>
               <button class="ghost" onclick='downloadGPX("${rec.id}")'>⬇️ GPX</button>
+              <button class="ghost" onclick='downloadKML("${rec.id}")'>⬇️ KML</button>
               <button class="ghost" onclick='downloadCSV("${rec.id}")'>⬇️ CSV</button>
               <button class="danger" onclick='del("${rec.id}")'>🗑️ Apagar</button>
             </div>
@@ -260,26 +307,46 @@
         cont.appendChild(div);
       }
     }
-
-    function getById(id){ return loadAll().find(x=>x.id===id); }
     function del(id){ const all=loadAll().filter(x=>x.id!==id); saveAll(all); renderHistory(); log('🗑️ Rota removida'); }
 
+    // ===== Downloads =====
     function download(filename, text, mime='text/plain'){
       const a=document.createElement('a'); a.href=`data:${mime};charset=utf-8,`+encodeURIComponent(text); a.download=filename; a.click();
     }
-    window.downloadGeoJSON=(id)=>{ const rec=getById(id); if(!rec) return; const geo={ type:'FeatureCollection', features:[{ type:'Feature', properties:{name:rec.name, startedAt:rec.startedAt, params:rec.params||null}, geometry:{ type:'LineString', coordinates: rec.points.map(p=>[p.lng,p.lat]) } }] }; download(`${rec.name.replace(/\s+/g,'_')}.geojson`, JSON.stringify(geo), 'application/geo+json'); }
-    window.downloadGPX=(id)=>{ const rec=getById(id); if(!rec) return; const wpt = rec.points.map(p=>`<trkpt lat="${p.lat}" lon="${p.lng}"><time>${new Date(p.ts).toISOString()}</time>${p.spd?`<extensions><speed>${p.spd}</speed></extensions>`:''}</trkpt>`).join('\n'); const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rastreador" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>${rec.name}</name><trkseg>\n${wpt}\n</trkseg></trk>\n</gpx>`; download(`${rec.name.replace(/\s+/g,'_')}.gpx`, gpx, 'application/gpx+xml'); }
-    window.downloadCSV=(id)=>{ const rec=getById(id); if(!rec) return; const head='ts,lat,lng,speed,accuracy,heading,tag\n'; const rows=rec.points.map(p=>[p.ts,p.lat,p.lng,p.spd??'',p.acc??'',p.hdg??'',p.tag??''].join(',')); download(`${rec.name.replace(/\s+/g,'_')}.csv`, head+rows.join('\n'), 'text/csv'); }
+    function baseName(name){ return name.replace(/[^\p{L}\p{N}_-]+/gu,'_'); }
+
+    window.downloadGeoJSON=(id)=>{ const rec=getById(id); if(!rec) return;
+      const geo={ type:'FeatureCollection', features:[{ type:'Feature', properties:{name:rec.name, startedAt:rec.startedAt, params:rec.params||null}, geometry:{ type:'LineString', coordinates: rec.points.map(p=>[p.lng,p.lat]) } }] };
+      download(`${baseName(rec.name)}.geojson`, JSON.stringify(geo), 'application/geo+json');
+    };
+    window.downloadGPX=(id)=>{ const rec=getById(id); if(!rec) return;
+      const wpt = rec.points.map(p=>`<trkpt lat="${p.lat}" lon="${p.lng}"><time>${new Date(p.ts).toISOString()}</time>${p.spd?`<extensions><speed>${p.spd}</speed></extensions>`:''}</trkpt>`).join('\n');
+      const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rastreador" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>${rec.name}</name><trkseg>\n${wpt}\n</trkseg></trk>\n</gpx>`;
+      download(`${baseName(rec.name)}.gpx`, gpx, 'application/gpx+xml');
+    };
+    window.downloadKML=(id)=>{ const rec=getById(id); if(!rec) return;
+      const coords = rec.points.map(p=>`${p.lng},${p.lat},0`).join(' ');
+      const kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><name>${rec.name}</name><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark></Document></kml>`;
+      download(`${baseName(rec.name)}.kml`, kml, 'application/vnd.google-earth.kml+xml');
+    };
+    window.downloadCSV=(id)=>{ const rec=getById(id); if(!rec) return;
+      const head='ts,lat,lng,speed,accuracy,heading,tag\n';
+      const rows=rec.points.map(p=>[p.ts,p.lat,p.lng,p.spd??'',p.acc??'',p.hdg??'',p.tag??''].join(','));
+      download(`${baseName(rec.name)}.csv`, head+rows.join('\n'), 'text/csv');
+    };
 
     async function exportAllZip(){
       const zip = new JSZip(); const all = loadAll(); if(!all.length){ alert('Nada para exportar.'); return; }
       for(const rec of all){
-        const base = rec.name.replace(/\s+/g,'_');
+        const base = baseName(rec.name);
         const geo={ type:'FeatureCollection', features:[{ type:'Feature', properties:{name:rec.name, startedAt:rec.startedAt, params:rec.params||null}, geometry:{ type:'LineString', coordinates: rec.points.map(p=>[p.lng,p.lat]) } }] };
         zip.file(`${base}.geojson`, JSON.stringify(geo));
         const wpt = rec.points.map(p=>`<trkpt lat="${p.lat}" lon="${p.lng}"><time>${new Date(p.ts).toISOString()}</time></trkpt>`).join('\n');
         const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rastreador" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>${rec.name}</name><trkseg>\n${wpt}\n</trkseg></trk>\n</gpx>`;
         zip.file(`${base}.gpx`, gpx);
+        const coords = rec.points.map(p=>`${p.lng},${p.lat},0`).join(' ');
+        const kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><name>${rec.name}</name><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark></Document></kml>`;
+        zip.file(`${base}.kml`, kml);
         const head='ts,lat,lng,speed,accuracy,heading,tag\n'; const rows=rec.points.map(p=>[p.ts,p.lat,p.lng,p.spd??'',p.acc??'',p.hdg??'',p.tag??''].join(',')); zip.file(`${base}.csv`, head+rows.join('\n'));
       }
       const blob = await zip.generateAsync({type:'blob'});
@@ -288,24 +355,310 @@
       URL.revokeObjectURL(url); log('📦 Exportação .zip concluída');
     }
 
-    window.preview=(id)=>{ const rec=getById(id); if(!rec) return; path.setLatLngs(rec.points.map(p=>[p.lat,p.lng])); if(rec.points.length){ const first=rec.points[0]; const last=rec.points[rec.points.length-1]; startMarker.setLatLng([first.lat,first.lng]).addTo(map); liveMarker.setLatLng([last.lat,last.lng]).addTo(map); map.fitBounds(path.getBounds(),{padding:[30,30]}); } log(`👁️ Visualizando: ${rec.name}`); }
+    async function restoreFromZip(file){
+      try{
+        const zip = await JSZip.loadAsync(file);
+        const all = loadAll();
+        for (const name of Object.keys(zip.files)){
+          if(!/\.(geojson|gpx|kml|csv)$/i.test(name)) continue;
+          const data = await zip.files[name].async('string');
+          // Só GeoJSON é restauração "completa"; os outros ignoramos pra manter simples
+          if(name.endsWith('.geojson')){
+            const geo = JSON.parse(data);
+            const f = geo.features?.[0];
+            if(!f) continue;
+            const rec = {
+              id: crypto.randomUUID(),
+              name: f.properties?.name || name.replace('.geojson',''),
+              startedAt: f.properties?.startedAt || Date.now(),
+              durationSec: 0,
+              distanceM: 0,
+              points: (f.geometry?.coordinates||[]).map(([lng,lat])=>({lat,lng,ts:Date.now()})),
+              params: f.properties?.params || {},
+              createdAt: Date.now()
+            };
+            // Recalcula métricas
+            let dist=0; for(let i=1;i<rec.points.length;i++){ dist+=haversine(rec.points[i-1],rec.points[i]); }
+            rec.distanceM=dist;
+            rec.durationSec = 0;
+            all.unshift(rec);
+          }
+        }
+        saveAll(all); renderHistory(); log('📥 Backup restaurado (apenas .geojson processado)');
+      }catch(e){ console.error(e); alert('Falha ao restaurar .zip'); }
+    }
 
-    function bindTruckForm(){ const p=loadTruckParams(); $('#truckHeight').value=p.height||''; $('#truckWeight').value=p.weight||''; $('#truckAxles').value=p.axles||''; $('#truckHazmat').value=p.hazmat||'nao'; const handler=()=>{ const obj={ height:$('#truckHeight').value, weight:$('#truckWeight').value, axles:$('#truckAxles').value, hazmat:$('#truckHazmat').value }; saveTruckParams(obj); }; ['truckHeight','truckWeight','truckAxles','truckHazmat'].forEach(id=>$('#'+id).addEventListener('change', handler)); }
+    // ===== Sessão =====
+    function resetSession(){
+      points=[]; startedAt=null; pausedAt=null; pausedAccum=0; idleAccum=0; lastAccepted=null; maxSpeed=0; idleStart=null; autoPaused=false;
+    }
+    function start(){
+      if(!('geolocation' in navigator)){ alert('Geolocalização não disponível.'); return; }
+      resetSession(); startedAt=Date.now(); paused=false; tracking=true;
+      setChip('Gravando','#22c55e');
+      $('#startTimeLabel').textContent=new Date(startedAt).toLocaleString();
+      btnStart.disabled=true; btnPause.disabled=false; btnStop.disabled=false; btnMark.disabled=false; btnResume.disabled=true;
+      path.setLatLngs([]);
+      try{ startMarker.remove(); liveMarker.remove(); }catch(e){}
+      watchId=navigator.geolocation.watchPosition(onPos,onErr,{ enableHighAccuracy:true, maximumAge:1500, timeout:20000 });
+      log('▶️ Iniciado (aguardando GPS...)');
+      // Guarda estado p/ recuperação
+      localStorage.setItem(KEY_RECOVERY, JSON.stringify({startedAt, pausedAccum, points}));
+    }
 
+    function pauseManual(){
+      if(!tracking||paused) return;
+      paused=true; pausedAt=Date.now();
+      btnPause.disabled=true; btnResume.disabled=false;
+      setChip('Pausado','#f59e0b'); log('⏸️ Pausado');
+    }
+    function resumeManual(){
+      if(!tracking||!paused) return;
+      paused=false; pausedAccum += Date.now()-pausedAt; pausedAt=null; btnPause.disabled=false; btnResume.disabled=true;
+      setChip('Gravando','#22c55e'); log('▶️ Retomado');
+    }
+
+    function stop(){
+      if(watchId!=null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
+      tracking=false; paused=false; autoPaused=false;
+      btnStart.disabled=false; btnPause.disabled=true; btnResume.disabled=true; btnStop.disabled=true; btnMark.disabled=true;
+      setChip('Parado','#334155');
+      const data=buildSummary();
+      if(points.length>1){
+        const name=$('#routeName').value.trim()||`Rota ${new Date(startedAt).toLocaleString()}`;
+        const params=loadTruckParams();
+        const rec={id:crypto.randomUUID(), name, startedAt, durationSec:data.durationSec, distanceM:data.distanceM, points, params, createdAt:Date.now()};
+        const all=loadAll(); all.unshift(rec); saveAll(all); renderHistory();
+        log(`💾 Rota salva: "${name}" • ${points.length} pts • ${fmtKm(data.distanceM)} • vmax ${data.maxSpeed.toFixed(1)} km/h`);
+      } else {
+        log('ℹ️ Nenhum ponto útil coletado.');
+      }
+      localStorage.removeItem(KEY_RECOVERY);
+      resetSession();
+      updateMetrics(); // zera UI
+    }
+
+    function askTag(){
+      const opts=['Parada','Pedágio','Posto','Perigoso','Restrição','Outro'];
+      const pick=prompt('Tipo do ponto?\n'+opts.map((o,i)=>`${i+1}. ${o}`).join('\n'));
+      const idx=Number(pick)-1; return opts[idx]||'Marcado';
+    }
+    function mark(){
+      if(points.length){
+        const last=points[points.length-1];
+        const tag=askTag();
+        last.tag=tag;
+        L.circleMarker([last.lat,last.lng],{radius:5,color:'#eab308',fill:true,fillOpacity:1}).addTo(map).bindTooltip(tag);
+        log('📍 Ponto manual: '+tag);
+      }
+    }
+
+    function onPos(pos){
+      const {latitude:lat, longitude:lng, accuracy, speed, heading}=pos.coords; const ts=pos.timestamp;
+      $('#gpsQuality').textContent=`±${Math.round(accuracy)} m`;
+      if(!tracking) return;
+
+      // descarta por pausa manual
+      if(paused) return;
+
+      // Filtro de precisão
+      if(accuracy && accuracy > cfg.maxAcc){ return; }
+
+      let p={lat,lng, ts, spd:speed??null, acc:accuracy??null, hdg:heading??null};
+
+      // Suavização EMA (aplicada sobre último ponto aceito)
+      if(lastAccepted && cfg.smoothing>0){
+        p.lat = lastAccepted.lat + (p.lat - lastAccepted.lat)*cfg.smoothing;
+        p.lng = lastAccepted.lng + (p.lng - lastAccepted.lng)*cfg.smoothing;
+      }
+
+      // Distância do último ponto aceito
+      if(lastAccepted){
+        const d = haversine(lastAccepted, p);
+        if(d < cfg.minStep){ // ignora tremida
+          // Atualiza métricas de ociosidade
+          handleIdle(kmh(speed||0), d, ts);
+          return;
+        }
+        // descarta salto irreal (heurística: > 150 m/s ≈ 540 km/h)
+        const dt = (ts - (lastAccepted.ts||ts))/1000 || 1;
+        const instSpeed = d/dt; // m/s
+        if(instSpeed > 150){ log('⚠️ Salto descartado'); return; }
+      }
+
+      // aceitar ponto
+      points.push(p);
+      lastAccepted = p;
+
+      // auto-pausa & retomar
+      autoPauseLogic(p);
+
+      // atualizar UI do mapa
+      liveMarker.setLatLng([p.lat,p.lng]).setIcon(truckIcon((p.hdg??0)));
+      liveMarker.addTo(map);
+      if(points.length===1){
+        startMarker.setLatLng([p.lat,p.lng]).addTo(map); map.setView([p.lat,p.lng], 16);
+      } else {
+        path.addLatLng([p.lat,p.lng]); map.panTo([p.lat,p.lng]);
+      }
+
+      // métricas
+      if(speed!=null){ const sKmh = kmh(speed); maxSpeed = Math.max(maxSpeed, sKmh); }
+      handleIdle(kmh(speed||0), 0, ts);
+      updateMetrics();
+      // guarda recuperação periódica
+      if(points.length % 5 === 0){
+        localStorage.setItem(KEY_RECOVERY, JSON.stringify({startedAt, pausedAccum, points}));
+      }
+    }
+
+    function onErr(err){ log(`❌ GPS: ${err.code} - ${err.message}`); }
+
+    function handleIdle(currKmh, d, ts){
+      const moving = currKmh > cfg.autoPauseSpeed;
+      if(!moving){
+        if(!idleStart) idleStart = ts;
+        idleAccum = Math.max(0, Math.round(((Date.now()) - (idleStart||Date.now()))/1000));
+      }else{
+        idleStart = null;
+      }
+    }
+
+    function autoPauseLogic(p){
+      const sKmh = kmh(p.spd||0);
+      if(!autoPaused && sKmh <= cfg.autoPauseSpeed){
+        // se ficar parado por N s, auto-pausa
+        if(!idleStart) idleStart = p.ts;
+        const idleSec = Math.max(0, Math.round((p.ts - idleStart)/1000));
+        if(idleSec >= cfg.autoPauseSec){
+          autoPaused = true; paused=true; pausedAt=Date.now();
+          btnPause.disabled=true; btnResume.disabled=false;
+          setChip('Auto-pausado','#f59e0b'); log('⏸️ Auto-pausado (parado)');
+        }
+      } else if(autoPaused && lastAccepted){
+        // retoma com deslocamento mínimo
+        const d = haversine(lastAccepted, p);
+        if(d >= cfg.autoResumeStep){
+          paused=false; autoPaused=false;
+          pausedAccum += Date.now()- (pausedAt||Date.now());
+          pausedAt=null; btnPause.disabled=false; btnResume.disabled=true;
+          setChip('Gravando','#22c55e'); log('▶️ Retomado automaticamente (movimento detectado)');
+        }
+      }
+    }
+
+    function buildSummary(){
+      let dist=0; for(let i=1;i<points.length;i++){ dist+=haversine(points[i-1],points[i]); }
+      const now=Date.now();
+      const durationSec=Math.max(0, Math.round(((paused?pausedAt:now)-startedAt-pausedAccum)/1000));
+      const avgSpeed = durationSec>0? (dist/1000)/(durationSec/3600):0;
+      return {distanceM:dist, durationSec, avgSpeed, maxSpeed};
+    }
+
+    function updateMetrics(){
+      const s=buildSummary();
+      $('#mDistance').textContent=fmtKm(s.distanceM);
+      $('#mDuration').textContent=fmtHms(s.durationSec);
+      $('#mAvgSpeed').textContent=`${s.avgSpeed.toFixed(1)} km/h`;
+      $('#mMaxSpeed').textContent=`${maxSpeed.toFixed(1)} km/h`;
+      $('#mIdle').textContent=fmtHms(idleAccum);
+      $('#mPoints').textContent=String(points.length);
+    }
+
+    // ===== Preview no mapa =====
+    window.preview=(id)=>{
+      const rec=getById(id); if(!rec) return;
+      path.setLatLngs(rec.points.map(p=>[p.lat,p.lng]));
+      if(rec.points.length){
+        const first=rec.points[0]; const last=rec.points[rec.points.length-1];
+        startMarker.setLatLng([first.lat,first.lng]).addTo(map);
+        liveMarker.setLatLng([last.lat,last.lng]).addTo(map);
+        map.fitBounds(path.getBounds(),{padding:[30,30]});
+      }
+      log(`👁️ Visualizando: ${rec.name}`);
+    };
+
+    // ===== Indicadores (best-effort) =====
+    async function setupBattery(){
+      try{
+        if('getBattery' in navigator){
+          const b = await navigator.getBattery();
+          const el=$('#batteryInfo');
+          const upd=()=> el.textContent = `🔋 ${Math.round(b.level*100)}% ${b.charging?'(carregando)':''}`;
+          upd(); b.addEventListener('levelchange',upd); b.addEventListener('chargingchange',upd);
+        }
+      }catch{}
+    }
+    function setupNet(){
+      const n = navigator.connection || navigator.webkitConnection || navigator.mozConnection;
+      const el=$('#netInfo');
+      const upd=()=> el.textContent = `🌐 ${navigator.onLine?'online':'offline'}${n?` • ${n.effectiveType}`:''}`;
+      upd(); window.addEventListener('online',upd); window.addEventListener('offline',upd);
+      if(n) n.addEventListener('change',upd);
+    }
+    function setupPerm(){
+      const el=$('#permInfo');
+      if(navigator.permissions?.query){
+        navigator.permissions.query({name:'geolocation'}).then(res=>{
+          const upd=()=>{ el.textContent='🔑 geo: '+res.state; log('Permissão de geolocalização: '+res.state); };
+          upd(); res.addEventListener('change',upd);
+        }).catch(()=>{});
+      } else { el.textContent='🔑 —'; }
+    }
+
+    // ===== Recuperação de sessão (se recarregar a página) =====
+    function tryRecovery(){
+      const raw = localStorage.getItem(KEY_RECOVERY);
+      if(!raw) return;
+      try{
+        const rec = JSON.parse(raw);
+        if(rec.startedAt && rec.points?.length){
+          if(confirm('Encontramos uma sessão anterior. Deseja retomar o rastreio?')){
+            points = rec.points||[];
+            startedAt = rec.startedAt;
+            pausedAccum = rec.pausedAccum||0;
+            tracking=true; paused=false;
+            setChip('Gravando','#22c55e');
+            $('#startTimeLabel').textContent=new Date(startedAt).toLocaleString();
+            btnStart.disabled=true; btnPause.disabled=false; btnStop.disabled=true; btnMark.disabled=false; btnResume.disabled=true;
+            // Redesenha trajeto atual na UI
+            path.setLatLngs(points.map(p=>[p.lat,p.lng]));
+            if(points.length){
+              lastAccepted = points[points.length-1];
+              startMarker.setLatLng([points[0].lat,points[0].lng]).addTo(map);
+              liveMarker.setLatLng([lastAccepted.lat,lastAccepted.lng]).addTo(map);
+              map.fitBounds(path.getBounds(),{padding:[30,30]});
+            }
+            updateMetrics();
+            // Reinicia watch
+            watchId=navigator.geolocation.watchPosition(onPos,onErr,{ enableHighAccuracy:true, maximumAge:1500, timeout:20000 });
+            log('♻️ Sessão retomada.');
+          } else {
+            localStorage.removeItem(KEY_RECOVERY);
+          }
+        }
+      }catch{}
+    }
+
+    // ===== Bindings =====
     $('#btnStart').addEventListener('click', start);
-    $('#btnPause').addEventListener('click', pause);
-    $('#btnResume').addEventListener('click', resume);
+    $('#btnPause').addEventListener('click', pauseManual);
+    $('#btnResume').addEventListener('click', resumeManual);
     $('#btnStop').addEventListener('click', stop);
     $('#btnMark').addEventListener('click', mark);
     $('#btnExportAll').addEventListener('click', exportAllZip);
-    $('#btnWipe').addEventListener('click', ()=>{ if(confirm('Apagar todo o histórico deste aparelho?')){ localStorage.removeItem('truck.tracks.v1'); renderHistory(); log('🧹 Histórico limpo'); } });
+    $('#btnWipe').addEventListener('click', ()=>{ if(confirm('Apagar todo o histórico deste aparelho?')){ localStorage.removeItem(KEY); renderHistory(); log('🧹 Histórico limpo'); } });
+    $('#btnRestore').addEventListener('click', ()=>$('#fileRestore').click());
+    $('#fileRestore').addEventListener('change', (e)=>{ const f=e.target.files?.[0]; if(f) restoreFromZip(f); });
 
     bindTruckForm();
+    bindCfgForm();
     renderHistory();
+    setupBattery(); setupNet(); setupPerm();
+    tryRecovery();
 
-    if(navigator.permissions && navigator.permissions.query){
-      navigator.permissions.query({name:'geolocation'}).then(res=>{ log('Permissão de geolocalização: '+res.state); }).catch(()=>{});
-    }
+    // Inicializa mapa com centro padrão
+    // (Se quiser centralizar no "meu local" ao abrir: use uma única leitura getCurrentPosition aqui)
   </script>
 </body>
 </html>
