@@ -1,22 +1,14 @@
 {
-  "name": "Rastreador de Rotas (Caminhão)",
-  "short_name": "Rota Truck",
-  "start_url": "./",
+  "name": "Rastreador de Rotas do Caminhão",
+  "short_name": "Rastreador",
+  "start_url": "./?source=pwa",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#22c55e",
+  "description": "Grave rotas com GPS, exporte e compartilhe.",
   "icons": [
-    {
-      "src": "icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
